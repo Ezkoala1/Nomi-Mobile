@@ -35,6 +35,11 @@ jobs:
         working-directory: ${{ env.PROJECT }}
         run: npm install
 
+      - name: Install Expo web dependencies
+        working-directory: ${{ env.PROJECT }}
+        run: |
+          npx expo install react-dom react-native-web
+
       - name: Create environment file
         working-directory: ${{ env.PROJECT }}
         env:
@@ -60,10 +65,14 @@ jobs:
           chmod +x cloudflared
           sudo mv cloudflared /usr/local/bin/cloudflared
 
+      - name: Install web server
+        run: |
+          npm install -g serve
+
       - name: Start web server
         working-directory: ${{ env.PROJECT }}
         run: |
-          npx serve dist -l 8080 > /tmp/server.log 2>&1 &
+          serve dist -l 8080 > /tmp/server.log 2>&1 &
           echo $! > /tmp/server.pid
 
           sleep 5
@@ -80,16 +89,19 @@ jobs:
 
           echo ""
           echo "=============================================="
-          echo "        NOMI WEB PREVIEW"
-          echo "=============================================="
-          cat /tmp/tunnel.log
+          echo "          ⚡ NOMI WEB PREVIEW ⚡"
           echo "=============================================="
           echo ""
 
+          grep -o 'https://[^ ]*trycloudflare.com' /tmp/tunnel.log || cat /tmp/tunnel.log
+
+          echo ""
+          echo "=============================================="
+          echo "Open the URL above on your phone."
+          echo "Preview expires when this workflow ends."
+          echo "=============================================="
+
       - name: Keep preview online for 5 minutes
         run: |
-          echo "Your Nomi preview is live."
-          echo "Open the https://*.trycloudflare.com URL above."
-          echo ""
-          echo "The preview will stay online for approximately 5 minutes."
+          echo "Preview is running..."
           sleep 300
