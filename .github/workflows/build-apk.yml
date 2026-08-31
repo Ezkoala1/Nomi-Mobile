@@ -1,0 +1,44 @@
+name: Build Nomi APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract mobile app
+        run: |
+          unzip -q mobile-nomi-app.zip -d extracted
+          echo "Extracted:"
+          find extracted -maxdepth 3 -type f | head -50
+
+      - name: Find project
+        run: |
+          PROJECT=$(find extracted -name package.json -type f -print -quit | xargs dirname)
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "Found project at: $PROJECT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ env.PROJECT }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT }}
+        run: npm install
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --platform android --profile preview --non-interactive
