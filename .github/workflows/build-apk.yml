@@ -11,16 +11,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project
+      - name: Extract mobile app
         run: |
           unzip -q nomi-mobile-app.zip -d extracted
-          echo "ZIP contents:"
-          find extracted -maxdepth 3 -type f | head -100
+
+          echo "Project files:"
+          find extracted -maxdepth 3 -type f | sort
 
       - name: Locate Expo project
         run: |
           PROJECT=$(find extracted -name package.json -type f -print -quit | xargs dirname)
-          echo "Found project at: $PROJECT"
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERROR: Could not find package.json in the ZIP."
+            exit 1
+          fi
+
+          echo "Found Expo project at: $PROJECT"
           echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
 
       - name: Set up Node
@@ -35,10 +42,30 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli
 
+      - name: Create Expo project
+        working-directory: ${{ env.PROJECT }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas init --force --non-interactive
+
+      - name: Create environment file
+        working-directory: ${{ env.PROJECT }}
+        env:
+          SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          cat > .env <<EOF
+          EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL
+          EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_KEY
+          EOF
+
       - name: Build APK
         working-directory: ${{ env.PROJECT }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          eas init --non-interactive
-          eas build --platform android --profile preview --non-interactive
+          eas build \
+            --platform android \
+            --profile preview \
+            --non-interactive
