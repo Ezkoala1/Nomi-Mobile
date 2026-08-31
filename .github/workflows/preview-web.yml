@@ -1,0 +1,95 @@
+name: Nomi Web Preview
+
+on:
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract mobile app
+        run: |
+          unzip -q nomi-mobile-app.zip -d extracted
+
+          PROJECT=$(find extracted -name package.json -type f -print -quit | xargs dirname)
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERROR: Could not find package.json"
+            exit 1
+          fi
+
+          echo "Found project at: $PROJECT"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT }}
+        run: npm install
+
+      - name: Create environment file
+        working-directory: ${{ env.PROJECT }}
+        env:
+          SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          cat > .env <<EOF
+          EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL
+          EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_KEY
+          EOF
+
+      - name: Export web app
+        working-directory: ${{ env.PROJECT }}
+        run: |
+          npx expo export --platform web
+
+      - name: Install Cloudflare Tunnel
+        run: |
+          curl -L \
+            -o cloudflared \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/cloudflared
+
+      - name: Start web server
+        working-directory: ${{ env.PROJECT }}
+        run: |
+          npx serve dist -l 8080 > /tmp/server.log 2>&1 &
+          echo $! > /tmp/server.pid
+
+          sleep 5
+
+          echo "Web server started."
+
+      - name: Create public preview URL
+        run: |
+          cloudflared tunnel \
+            --url http://localhost:8080 \
+            --no-autoupdate > /tmp/tunnel.log 2>&1 &
+
+          sleep 8
+
+          echo ""
+          echo "=============================================="
+          echo "        NOMI WEB PREVIEW"
+          echo "=============================================="
+          cat /tmp/tunnel.log
+          echo "=============================================="
+          echo ""
+
+      - name: Keep preview online for 5 minutes
+        run: |
+          echo "Your Nomi preview is live."
+          echo "Open the https://*.trycloudflare.com URL above."
+          echo ""
+          echo "The preview will stay online for approximately 5 minutes."
+          sleep 300
